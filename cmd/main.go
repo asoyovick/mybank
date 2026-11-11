@@ -42,8 +42,13 @@ func main() {
 		dobInput, _ := reader.ReadString('\n')
 		dob := strings.TrimSpace(dobInput)
 		// call the bank engine to create an account.
-		id := b.CreateAccount(fullname, idno, dob)
-		fmt.Printf("Account created succesfully for user with ID: %d for %s\n", id, fullname)
+		id, err := b.CreateAccount(fullname, idno, dob)
+		if err != nil {
+			fmt.Println("Account creation failed: ", err)
+			return
+		}
+		fmt.Printf("Account created successfully for user ID: %d for %s\n", id, fullname)
+	} else {
+		fmt.Println("User registered successfully")
 	}
-
 }

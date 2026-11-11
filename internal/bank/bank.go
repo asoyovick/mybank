@@ -38,7 +38,7 @@ func (b *Bank) CreateAccount(fullname, idno string, dob string) (int, error) {
 	}
 	today := time.Now()
 
-	if parsedDOB.After(time.Now()) {
+	if parsedDOB.After(today()) {
 		return 0, fmt.Errorf("date of birth cannot be in the future")
 	}
 	age := today.Year() - parsedDOB.Year()
