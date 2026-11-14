@@ -1,6 +1,8 @@
 package model
 
 import (
+	"fmt"
+	"sync"
 	"time"
 )
 
@@ -11,19 +13,20 @@ import (
 type AccountHolder struct {
 	FullName string
 	Idno     string
-	Age      string
+	Age      time.Time
 }
 
 // user details and account info.
 type Account struct {
 	ID       int
 	Holder   AccountHolder
-	Ballance string
-	//History  []Transactions
+	Ballance float64
+	History  []Transactions
+	mu       sync.Mutex
 }
 
 // User transaction details.
-type Transctions struct {
+type Transactions struct {
 	ID        int
 	Amount    float64
 	Type      string
@@ -33,7 +36,17 @@ type Transctions struct {
 
 // Create New account for the user.
 // This function updates the account struct.
-func NewAccount(id int, holder AccountHolder) *Account {
+func NewAccount(id int, holder AccountHolder, initialDeposit float64) *Account {
+	var history []Transactions
+	if initialDeposit > 0 {
+		history = append(history, Transactions{
+			ID:        1,
+			Type:      "INITIAL DEPOSIT",
+			Amount:    initialDeposit,
+			Timestamp: time.Now(),
+			Details:   fmt.Sprint("Initial deposit of $%.2f", initialDeposit),
+		})
+	}
 	return &Account{
 		ID:     id,
 		Holder: holder,
