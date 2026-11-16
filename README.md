@@ -86,6 +86,8 @@ Automated tests, migrations under version control, documented runbooks
 4.  Least privilege. Each service, database role and human gets only the access it needs.
 5.  Keep the Go standard-library philosophy where it helps. Use well-vetted libraries for security-critical concerns (JWT, crypto, rate limiting) rather than writing your own.
 3.2 Logical Architecture
+
+```text
             Clients (web, mobile, partner systems, admin UI)
                               |
                         HTTPS / TLS 1.2+
@@ -113,8 +115,12 @@ Automated tests, migrations under version control, documented runbooks
            | primary +     |      | (events,       |
            | replicas      |      | notifications) |
            +---------------+      +----------------+
+```
+
 Start as a modular monolith: one deployable Go service with strict internal module boundaries. Split into separate services only when scale or team structure demands it. This preserves transactional integrity, which is far harder across service boundaries.
 3.3 Proposed Repository Layout
+
+```text
 mybank/
 ├── cmd/
 │   ├── api/                 # HTTP server entry point
@@ -134,6 +140,7 @@ mybank/
 ├── api/                     # OpenAPI specification
 ├── deploy/                  # Dockerfiles, Kubernetes manifests, Terraform
 └── docs/                    # This documentation, runbooks, ADRs
+```
 3.4 Layer Responsibilities
 • httpapi: parses and validates requests, authenticates, maps errors to status codes. Contains no business logic.
 • bank: use cases such as Transfer, OpenAccount, Withdraw. Enforces business rules and limits, and decides the transaction boundary.
@@ -144,6 +151,8 @@ mybank/
 4.1 Money Representation
 Never use floating point for money. Store amounts as integer minor units (for example cents) in BIGINT, with a separate currency code. This avoids rounding errors and makes arithmetic exact. The current README uses NUMERIC(12,2), which is acceptable for a prototype, but integer minor units are recommended for production because they remove ambiguity across currencies with different decimal places.
 4.2 Core Tables
+
+```sql
 -- Customers and identity
 CREATE TABLE customers (
   id             BIGSERIAL PRIMARY KEY,
@@ -208,6 +217,7 @@ CREATE TABLE audit_log (
   details     JSONB,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+```
 4.3 Enforcing Immutability
 Revoke UPDATE and DELETE on ledger_entries and audit_log from the application role, and add a trigger that raises an exception on any attempt. Corrections are made only by posting compensating entries linked through reverses_id.
 4.4 Double-Entry Rule
