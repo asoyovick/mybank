@@ -1,0 +1,199 @@
+# Save as: .github/workflows/ci.yml
+#
+# MyBank CI pipeline (issue MB-005)
+# Runs on every pull request and on pushes to main:
+#   1. Branch-name check (issue-based workflow convention)
+#   2. Build
+#   3. Static analysis: go vet, staticcheck, gosec, govulncheck
+#   4. Tests with the race detector against a real PostgreSQL service
+#   5. One aggregate "CI Success" check to mark as required in branch protection
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same branch/PR to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the workflow only needs to read the repository.
+permissions:
+  contents: read
+
+env:
+  # Raise to 80 once the test suite matures (90 for ledger and bank, see playbook).
+  COVERAGE_MIN: "0"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Enforces: <type>/<issue-number>-<short-description>
+  # e.g. feature/12-transfer-with-row-locking
+  # ---------------------------------------------------------------------------
+  branch-name:
+    name: Branch name
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check branch follows issue convention
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          pattern='^(feature|bugfix|fix|chore|docs|test|refactor|security)/[0-9]+-[a-z0-9._-]+$'
+          if [[ ! "$BRANCH" =~ $pattern ]]; then
+            echo "::error::Branch '$BRANCH' does not match <type>/<issue-number>-<description>"
+            echo "Example: feature/12-transfer-with-row-locking"
+            exit 1
+          fi
+          echo "Branch name OK: $BRANCH"
+
+  # ---------------------------------------------------------------------------
+  # Compile everything.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify dependencies are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Build all packages
+        run: go build ./...
+
+      - name: Build CLI binary
+        run: go build -o /tmp/mybank ./cmd/...
+
+  # ---------------------------------------------------------------------------
+  # Static analysis and security scanning.
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint and security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Install analysis tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: staticcheck
+        run: staticcheck ./...
+
+      - name: gosec (security issues in our code)
+        run: gosec -quiet ./...
+
+      - name: govulncheck (known vulnerabilities in dependencies)
+        run: govulncheck ./...
+
+  # ---------------------------------------------------------------------------
+  # Unit + integration tests with the race detector and a real PostgreSQL.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test (race detector, PostgreSQL)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mybank_user
+          POSTGRES_PASSWORD: mybank_password
+          POSTGRES_DB: mybank
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mybank_user -d mybank"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # CI-only credentials for the throwaway service container above.
+      # sslmode=disable is acceptable here; use verify-full in real environments.
+      DATABASE_URL: postgres://mybank_user:mybank_password@localhost:5432/mybank?sslmode=disable&connect_timeout=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Uncomment once migrations exist (MB-002):
+      # - name: Apply database migrations
+      #   run: make migrate-up
+
+      - name: Run tests with race detector
+        run: go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Enforce coverage threshold
+        run: |
+          total="$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')"
+          echo "Total coverage: ${total}% (minimum ${COVERAGE_MIN}%)"
+          awk -v t="$total" -v m="$COVERAGE_MIN" 'BEGIN { exit (t+0 < m+0) ? 1 : 0 }' \
+            || { echo "::error::Coverage ${total}% is below ${COVERAGE_MIN}%"; exit 1; }
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Single required status check for branch protection.
+  # Mark only "CI Success" as required so job names can change freely.
+  # ---------------------------------------------------------------------------
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [branch-name, build, lint, test]
+    steps:
+      - name: Verify all jobs passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "Job results: $RESULTS"
+          # branch-name is skipped on push to main; skipped counts as OK.
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then
+            echo "::error::One or more required jobs did not pass"
+            exit 1
+          fi
