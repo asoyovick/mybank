@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://json.schemastore.org/pull-request-labeler-5.json
+# Config for actions/labeler v5: labels pull requests by the files they change.
+# Label names match the playbook's label set. Create the labels once in the repo.
+
+"area: cli":
+  - changed-files:
+      - any-glob-to-any-file: ["cmd/cli/**", "cmd/main.go"]
+
+"area: api":
+  - changed-files:
+      - any-glob-to-any-file: ["cmd/api/**", "internal/httpapi/**", "api/**"]
+
+"area: bank":
+  - changed-files:
+      - any-glob-to-any-file: ["internal/bank/**", "internal/model/**"]
+
+"area: ledger":
+  - changed-files:
+      - any-glob-to-any-file: ["internal/ledger/**"]
+
+"area: database":
+  - changed-files:
+      - any-glob-to-any-file: ["internal/database/**", "migrations/**"]
+
+"area: auth":
+  - changed-files:
+      - any-glob-to-any-file: ["internal/auth/**"]
+
+"area: compliance":
+  - changed-files:
+      - any-glob-to-any-file: ["internal/compliance/**"]
+
+"area: infra":
+  - changed-files:
+      - any-glob-to-any-file: [".github/**", "deploy/**", "Dockerfile", "docker-compose.yml", "Makefile"]
+
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file: ["docs/**", "README.md", "**/*.md"]
+
+# Extra scrutiny flag: anything touching money, schema or security.
+"money-path":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/ledger/**"
+          - "internal/bank/**"
+          - "internal/auth/**"
+          - "migrations/**"

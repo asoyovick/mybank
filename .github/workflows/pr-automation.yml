@@ -1,0 +1,159 @@
+# MyBank pull request automation
+#
+#  1. labeler       - labels the PR by changed paths (.github/labeler.yml)
+#  2. size          - adds a size/* label and warns on very large PRs
+#  3. gate-check    - PR must close an issue whose prerequisites are DONE
+#                     (closed + `gate-passed` label), per the Issue Playbook
+#  4. checklist     - every box in the PR template must be ticked
+#
+# Mark "Gate check" and "PR checklist" as required status checks on main.
+# Note: write-access jobs only run for same-repo branches (not forks), which
+# matches an internal-contributors workflow.
+
+name: PR Automation
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: pr-automation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  labeler:
+    name: Auto-label by path
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          configuration-path: .github/labeler.yml
+          sync-labels: true
+
+  size:
+    name: Size label
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const changed = pr.additions + pr.deletions;
+            let size = 'size/XS';
+            if (changed >= 1000) size = 'size/XL';
+            else if (changed >= 500) size = 'size/L';
+            else if (changed >= 200) size = 'size/M';
+            else if (changed >= 50) size = 'size/S';
+
+            // Remove stale size labels, then apply the current one.
+            for (const l of pr.labels) {
+              if (l.name.startsWith('size/') && l.name !== size) {
+                await github.rest.issues.removeLabel({
+                  ...context.repo, issue_number: pr.number, name: l.name,
+                });
+              }
+            }
+            await github.rest.issues.addLabels({
+              ...context.repo, issue_number: pr.number, labels: [size],
+            });
+
+            if (size === 'size/XL') {
+              core.warning(`This PR changes ${changed} lines. Split it into smaller issues/PRs for a safer review.`);
+            }
+
+  gate-check:
+    name: Gate check
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+
+            // 1. The PR must close at least one issue: "Closes #12"
+            const refs = [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)]
+              .map(m => Number(m[1]));
+            if (refs.length === 0) {
+              core.setFailed('This PR must reference an issue, e.g. "Closes #12". No work without an issue.');
+              return;
+            }
+
+            const failures = [];
+
+            for (const num of refs) {
+              const { data: issue } = await github.rest.issues.get({
+                ...context.repo, issue_number: num,
+              });
+
+              if (issue.pull_request) {
+                failures.push(`#${num} is a pull request, not an issue.`);
+                continue;
+              }
+
+              // 2. One owner: the PR author should be assigned to the issue.
+              const assignees = (issue.assignees || []).map(a => a.login);
+              if (!assignees.includes(pr.user.login)) {
+                core.warning(`#${num}: PR author @${pr.user.login} is not assigned to the issue.`);
+              }
+
+              // 3. Every prerequisite listed as "Blocked by #N, #M" must be
+              //    closed AND carry the gate-passed label.
+              const lines = (issue.body || '').match(/blocked by[^\n]*/gi) || [];
+              const blockers = [...new Set(
+                lines.flatMap(l => [...l.matchAll(/#(\d+)/g)].map(m => Number(m[1])))
+              )];
+
+              for (const b of blockers) {
+                const { data: blocker } = await github.rest.issues.get({
+                  ...context.repo, issue_number: b,
+                });
+                const passed = blocker.labels.some(
+                  l => (typeof l === 'string' ? l : l.name) === 'gate-passed'
+                );
+                if (blocker.state !== 'closed' || !passed) {
+                  failures.push(
+                    `#${num} is blocked by #${b} ("${blocker.title}"), which is ` +
+                    `${blocker.state}${passed ? '' : ' and lacks the gate-passed label'}.`
+                  );
+                }
+              }
+            }
+
+            if (failures.length) {
+              core.setFailed(
+                'Prerequisite gate not satisfied:\n- ' + failures.join('\n- ') +
+                '\n\nFinish and test the prerequisite issues first (see the Issue Playbook).'
+              );
+            } else {
+              core.info('All prerequisite issues are done and gate-passed.');
+            }
+
+  checklist:
+    name: PR checklist
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Require every checklist item to be ticked
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          total=$(printf '%s\n' "$PR_BODY" | grep -cE '^\s*- \[[ xX]\]' || true)
+          open=$(printf '%s\n' "$PR_BODY" | grep -cE '^\s*- \[ \]' || true)
+          if [ "$total" -eq 0 ]; then
+            echo "::error::No checklist found. Use the pull request template."
+            exit 1
+          fi
+          if [ "$open" -gt 0 ]; then
+            echo "::error::$open checklist item(s) are not ticked. Complete them or remove items that genuinely do not apply, with a comment explaining why."
+            exit 1
+          fi
+          echo "All $total checklist items ticked."
