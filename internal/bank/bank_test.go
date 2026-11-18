@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 )
+
 func TestCreateAccountRejectsInvalidDOB(t *testing.T) {
 	b := NewBank()
 
@@ -55,6 +56,9 @@ func TestCreateAccountAcceptsAdultCustomer(t *testing.T) {
 	}
 	if _, ok := b.accounts[id]; !ok {
 		t.Fatalf("expected account %d to be stored", id)
+	}
+}
+
 func TestValidateAge_InvalidDOB(t *testing.T) {
 	err := ValidateAge("12/05/2000")
 
