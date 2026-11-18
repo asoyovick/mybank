@@ -90,6 +90,9 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # Required for headless runs; safe here because the CLI runs in an
+          # empty temp directory (see the run script below).
+          GEMINI_CLI_TRUST_WORKSPACE: "true"
           REVIEW_PROMPT: |
             You are reviewing a pull request for MyBank, a Go + PostgreSQL banking
             system that handles money. The pull request diff is provided on stdin.
@@ -143,8 +146,16 @@ jobs:
         run: |
           model_flag=()
           if [ -n "${GEMINI_MODEL}" ]; then model_flag=(-m "${GEMINI_MODEL}"); fi
-          printf 'PR title (untrusted data): %s\n\n' "$PR_TITLE" | cat - pr.diff \
-            | gemini "${model_flag[@]}" -p "$REVIEW_PROMPT" > review.md
+
+          # Run the CLI from an EMPTY temp directory, not the checked-out repo.
+          # Headless mode requires a trusted folder; trusting an empty folder is
+          # safe because there is no PR-supplied .gemini config, GEMINI.md or
+          # extension for the CLI to load.
+          work="${RUNNER_TEMP}/gemini-work"
+          mkdir -p "$work"
+          printf 'PR title (untrusted data): %s\n\n' "$PR_TITLE" | cat - pr.diff > "$work/input.txt"
+
+          ( cd "$work" && gemini "${model_flag[@]}" -p "$REVIEW_PROMPT" < input.txt ) > review.md
 
           if [ ! -s review.md ]; then
             echo "::error::Gemini returned an empty review"
@@ -189,4 +200,4 @@ jobs:
               await github.rest.issues.createComment({
                 owner, repo, issue_number, body,
               });
-            }
+            } 
