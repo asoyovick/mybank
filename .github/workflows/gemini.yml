@@ -49,6 +49,16 @@ jobs:
       MAX_DIFF_BYTES: "300000"
 
     steps:
+      - name: Check Gemini API key is available
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::GEMINI_API_KEY is empty. Add it under Settings > Secrets and variables > Actions > Repository secrets (exact name, in this repository), then re-run the job. Dependabot PRs use a separate Dependabot secrets store."
+            exit 1
+          fi
+          echo "GEMINI_API_KEY is set."
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
