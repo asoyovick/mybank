@@ -4,6 +4,22 @@ import (
 	"time"
 )
 
+type AccountStatus string
+
+var (
+	AccountActive AccountStatus = "ACTIVE"
+	AccountFrozen AccountStatus = "FROZEN"
+	AccountClosed AccountStatus = "CLOSED"
+)
+
+type AccountType string
+
+var (
+	AccountAssets    AccountType = "ASSETS"
+	AccountLiability AccountType = "LIABILITY"
+	AccountRevenue   AccountType = "REVENUE"
+)
+
 // starting with the models.
 // This is where we declare the structs that hold the user data.
 
