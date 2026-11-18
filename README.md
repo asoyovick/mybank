@@ -499,7 +499,37 @@ Wrap every external system behind an interface in `internal/`, with timeouts, re
 
 ### 10.4 Configuration
 
-Twelve-factor configuration through environment variables and a secrets manager. Keep `DATABASE_URL` out of source control, and use separate database credentials for the API (limited DML), migrations (DDL) and reporting (read-only).
+Twelve-factor configuration through environment variables and a secrets manager. Keep credentials out of source control, and use separate database credentials for the API (limited DML), migrations (DDL) and reporting (read-only). MB-004 replaces the earlier single `DATABASE_URL` sketch with the granular variables below.
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `DB_HOST` | Yes | — | PostgreSQL host. |
+| `DB_PORT` | No | `5432` | PostgreSQL port (1–65535). |
+| `DB_USER` | Yes | — | Database role used by the application. |
+| `DB_PASSWORD` | Yes | — | Password for that role. Never commit it. |
+| `DB_NAME` | Yes | — | Database name. |
+| `DB_SSLMODE` | No | `require` | `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`. Use `verify-full` in production; local development may set `disable`. |
+| `DB_MAX_CONNS` | No | `25` | Maximum connections in the pool; must be greater than 0. |
+| `DB_MIN_CONNS` | No | `5` | Minimum connections kept in the pool; must be at least 0 and no greater than `DB_MAX_CONNS`. |
+| `DB_CONN_TIMEOUT` | No | `5s` | Go duration for connection setup, e.g. `5s` or `1m`; must be greater than 0. |
+
+Local setup example with placeholder values:
+
+```bash
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_USER=mybank_app
+export DB_PASSWORD='local-dev-only'
+export DB_NAME=mybank
+export DB_SSLMODE=disable
+export DB_MAX_CONNS=10
+export DB_MIN_CONNS=2
+export DB_CONN_TIMEOUT=5s
+
+go test ./internal/config/...
+```
+
+`config.LoadConfig()` validates these values at startup and returns an error naming the offending variable; it never includes the password in an error message or log. This layer only produces a `Config` value — it does not open a database connection. That arrives with the persistence work in MB-005.
 
 ---
 
