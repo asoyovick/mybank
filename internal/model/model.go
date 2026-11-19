@@ -1,29 +1,40 @@
 package model
 
-import (
-	"time"
+import "time"
+
+type AccountStatus string
+
+const (
+	AccountStatusActive AccountStatus = "ACTIVE"
+	AccountStatusFrozen AccountStatus = "FROZEN"
+	AccountStatusClosed AccountStatus = "CLOSED"
 )
 
-// starting with the models.
-// This is where we declare the structs that hold the user data.
+type AccountType string
 
-// user details for creating new account.
+const (
+	AccountTypeAsset     AccountType = "ASSET"
+	AccountTypeLiability AccountType = "LIABILITY"
+	AccountTypeRevenue   AccountType = "REVENUE"
+)
+
+// AccountHolder contains the personal details of an account owner.
 type AccountHolder struct {
 	FullName string
-	Idno     string
-	Age      string
+	IDNumber string
+	DOB      string
 }
 
-// user details and account info.
+// Account represents a bank account.
 type Account struct {
-	ID       int
-	Holder   AccountHolder
-	Ballance string
-	//History  []Transactions
+	ID      int
+	Holder  AccountHolder
+	Balance string
+	// History []Transaction
 }
 
-// User transaction details.
-type Transctions struct {
+// Transaction represents a single account transaction.
+type Transaction struct {
 	ID        int
 	Amount    float64
 	Type      string
@@ -31,8 +42,7 @@ type Transctions struct {
 	Details   string
 }
 
-// Create New account for the user.
-// This function updates the account struct.
+// NewAccount creates and returns a new account for the given holder.
 func NewAccount(id int, holder AccountHolder) *Account {
 	return &Account{
 		ID:     id,

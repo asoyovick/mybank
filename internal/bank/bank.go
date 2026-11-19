@@ -60,8 +60,8 @@ func (b *Bank) CreateAccount(fullname, idno, dob string) (int, error) {
 
 	holder := model.AccountHolder{
 		FullName: fullname,
-		Idno:     idno,
-		Age:      dob,
+		IDNumber: idno,
+		DOB:      dob,
 	}
 
 	id := b.nextID
