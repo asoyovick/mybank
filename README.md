@@ -499,7 +499,44 @@ Wrap every external system behind an interface in `internal/`, with timeouts, re
 
 ### 10.4 Configuration
 
-Twelve-factor configuration through environment variables and a secrets manager. Keep `DATABASE_URL` out of source control, and use separate database credentials for the API (limited DML), migrations (DDL) and reporting (read-only).
+Twelve-factor configuration through environment variables and a secrets manager. Keep credentials out of source control, and use separate database credentials for the API (limited DML), migrations (DDL) and reporting (read-only). MB-004 replaces the earlier single `DATABASE_URL` sketch with the granular variables below.
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `APP_ENV` | No | `development` | `development`, `staging` or `production` (case-insensitive). |
+| `LOG_LEVEL` | No | `INFO` | `DEBUG`, `INFO`, `WARN` or `ERROR` (case-insensitive; `WARNING` is accepted as `WARN`). |
+| `DB_HOST` | Yes | — | PostgreSQL host. |
+| `DB_PORT` | No | `5432` | PostgreSQL port (1–65535). |
+| `DB_USER` | Yes | — | Database role used by the application. |
+| `DB_PASSWORD` | Yes | — | Password for that role. Never commit it. |
+| `DB_NAME` | Yes | — | Database name. |
+| `DB_SSLMODE` | No | `require` | `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`. Use `verify-full` in production; local development may set `disable`. |
+| `DB_MAX_CONNS` | No | `25` | Maximum connections in the pool; must be greater than 0. |
+| `DB_MIN_CONNS` | No | `5` | Minimum connections kept in the pool; must be at least 0 and no greater than `DB_MAX_CONNS`. |
+| `DB_CONN_TIMEOUT` | No | `5s` | Go duration for connection setup, e.g. `5s` or `1m`; must be greater than 0. |
+
+Safe local `.env.example` (placeholders only):
+
+```dotenv
+# Copy to .env for local development and load it with direnv or "source .env".
+APP_ENV=development
+LOG_LEVEL=info
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=mybank_app
+DB_PASSWORD=replace-with-a-local-dev-password
+DB_NAME=mybank
+DB_SSLMODE=disable
+DB_MAX_CONNS=10
+DB_MIN_CONNS=2
+DB_CONN_TIMEOUT=5s
+```
+
+**Never commit real credentials.** Keep `.env` out of Git, use distinct credentials per environment, and inject production secrets from a secrets manager. The values above are local placeholders, not working credentials.
+
+`config.LoadConfig()` validates these values at startup and returns an error naming the offending variable; it never includes the password in an error message or log. It returns `cfg.LogLevel`, which the application passes into the logger. This layer only produces a `Config` value — it does not open a database connection. That arrives with the persistence work in MB-005.
+
+Structured logging is provided by `internal/logger`. Initialise it once at startup with `logger.New(logger.Options{Level: cfg.LogLevel, Out: os.Stdout})`; the logger package does not import the config package. Attach a request ID with standard slog fields: `log.With(slog.String("request_id", id))`. The JSON handler redacts known secret-bearing keys (including `password`, `db_password`, `database_url`, `access_token`, `refresh_token`, `client_secret`, `authorization`, `dsn` and `connection_string`) by name, including inside nested groups, and `config.Config` implements `slog.LogValuer` so its password is never serialized. Redaction is key-based: it does **not** detect secrets logged under arbitrary unrecognised field names, so callers must never log raw credentials directly.
 
 ---
 
@@ -774,7 +811,7 @@ The IDs below are planning references. Put them in the issue title (for example 
 | MB-001 | Implement `internal/database` connection pool and `WithTx` helper | database | none |
 | MB-002 | Initial migrations: customers, accounts, transactions, ledger\_entries, audit\_log | database | MB-001 |
 | MB-003 | Rename `Transctions` to `Transaction`; clean domain models | cli / bank | none |
-| MB-004 | Config loading (`DATABASE_URL`, timeouts) and structured logging | infra | none |
+MB-004 | Config loading (environment variables, database settings) and structured logging | infra | none |
 | MB-005 | CI pipeline: build, vet, staticcheck, gosec, govulncheck, tests | infra | none |
 
 **Epic B: Core Money Operations (Phase 0)**
