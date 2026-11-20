@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 )
+
 func TestCreateAccountRejectsInvalidDOB(t *testing.T) {
 	b := NewBank()
 
@@ -55,6 +56,9 @@ func TestCreateAccountAcceptsAdultCustomer(t *testing.T) {
 	}
 	if _, ok := b.accounts[id]; !ok {
 		t.Fatalf("expected account %d to be stored", id)
+	}
+}
+
 func TestValidateAge_InvalidDOB(t *testing.T) {
 	err := ValidateAge("12/05/2000")
 
@@ -62,7 +66,6 @@ func TestValidateAge_InvalidDOB(t *testing.T) {
 		t.Fatal("expected an error for invalid DOB format, got nil")
 	}
 }
-
 func TestValidateAge_FutureDOB(t *testing.T) {
 	futureDOB := time.Now().AddDate(1, 0, 0).Format("2006-01-02")
 
