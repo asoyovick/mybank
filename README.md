@@ -804,7 +804,7 @@ The IDs below are planning references. Put them in the issue title (for example 
 | MB-001 | Implement `internal/database` connection pool and `WithTx` helper | database | none |
 | MB-002 | Initial migrations: customers, accounts, transactions, ledger\_entries, audit\_log | database | MB-001 |
 | MB-003 | Rename `Transctions` to `Transaction`; clean domain models | cli / bank | none |
-| MB-004 | Config loading (`DATABASE_URL`, timeouts) and structured logging | infra | none |
+MB-004 | Config loading (environment variables, database settings) and structured logging | infra | none |
 | MB-005 | CI pipeline: build, vet, staticcheck, gosec, govulncheck, tests | infra | none |
 
 **Epic B: Core Money Operations (Phase 0)**
