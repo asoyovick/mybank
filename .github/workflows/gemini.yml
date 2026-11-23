@@ -31,7 +31,7 @@ jobs:
   review:
     name: AI review (Gemini)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     if: >
       github.event.pull_request.draft == false &&
@@ -45,10 +45,22 @@ jobs:
       # Optional: set a repository variable GEMINI_MODEL to pick a model.
       # Leave unset to use the CLI default.
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      # Optional second model tried on the last retry if the first is overloaded.
+      GEMINI_FALLBACK_MODEL: ${{ vars.GEMINI_FALLBACK_MODEL }}
       # Keep the prompt within model limits; very large diffs are truncated.
       MAX_DIFF_BYTES: "300000"
 
     steps:
+      - name: Check Gemini API key is available
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::GEMINI_API_KEY is empty. Add it under Settings > Secrets and variables > Actions > Repository secrets (exact name, in this repository), then re-run the job. Dependabot PRs use a separate Dependabot secrets store."
+            exit 1
+          fi
+          echo "GEMINI_API_KEY is set."
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -77,9 +89,13 @@ jobs:
           fi
 
       - name: Run Gemini review
+        id: gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # Required for headless runs; safe here because the CLI runs in an
+          # empty temp directory (see the run script below).
+          GEMINI_CLI_TRUST_WORKSPACE: "true"
           REVIEW_PROMPT: |
             You are reviewing a pull request for MyBank, a Go + PostgreSQL banking
             system that handles money. The pull request diff is provided on stdin.
@@ -133,15 +149,44 @@ jobs:
         run: |
           model_flag=()
           if [ -n "${GEMINI_MODEL}" ]; then model_flag=(-m "${GEMINI_MODEL}"); fi
-          printf 'PR title (untrusted data): %s\n\n' "$PR_TITLE" | cat - pr.diff \
-            | gemini "${model_flag[@]}" -p "$REVIEW_PROMPT" > review.md
 
-          if [ ! -s review.md ]; then
-            echo "::error::Gemini returned an empty review"
-            exit 1
+          # Run the CLI from an EMPTY temp directory, not the checked-out repo.
+          # Headless mode requires a trusted folder; trusting an empty folder is
+          # safe because there is no PR-supplied .gemini config, GEMINI.md or
+          # extension for the CLI to load.
+          work="${RUNNER_TEMP}/gemini-work"
+          mkdir -p "$work"
+          printf 'PR title (untrusted data): %s\n\n' "$PR_TITLE" | cat - pr.diff > "$work/input.txt"
+
+          # The Gemini API sometimes answers 503 "high demand". Try up to 3 times:
+          # attempts 1-2 use GEMINI_MODEL (or the CLI default), attempt 3 uses
+          # GEMINI_FALLBACK_MODEL if you set it. Each attempt is capped at 6 min.
+          # This job is advisory, so a total failure only logs a warning.
+          ok=false
+          for attempt in 1 2 3; do
+            flags=("${model_flag[@]}")
+            if [ "$attempt" -eq 3 ] && [ -n "${GEMINI_FALLBACK_MODEL}" ]; then
+              flags=(-m "${GEMINI_FALLBACK_MODEL}")
+            fi
+            echo "Gemini attempt ${attempt}"
+            if ( cd "$work" && timeout 360 gemini "${flags[@]}" -p "$REVIEW_PROMPT" < input.txt ) > review.md \
+               && [ -s review.md ]; then
+              ok=true
+              break
+            fi
+            echo "::warning::Gemini attempt ${attempt} failed"
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 45))
+          done
+
+          if [ "$ok" = true ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Gemini review unavailable (service busy or error). Re-run this job later. The PR is not blocked."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Post or update review comment
+        if: steps.gemini.outputs.ok == 'true'
         uses: actions/github-script@v7
         with:
           script: |

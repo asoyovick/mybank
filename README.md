@@ -503,8 +503,6 @@ Twelve-factor configuration through environment variables and a secrets manager.
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `APP_ENV` | No | `development` | `development`, `staging` or `production` (case-insensitive). |
-| `LOG_LEVEL` | No | `INFO` | `DEBUG`, `INFO`, `WARN` or `ERROR` (case-insensitive; `WARNING` is accepted as `WARN`). |
 | `DB_HOST` | Yes | — | PostgreSQL host. |
 | `DB_PORT` | No | `5432` | PostgreSQL port (1–65535). |
 | `DB_USER` | Yes | — | Database role used by the application. |
@@ -515,28 +513,23 @@ Twelve-factor configuration through environment variables and a secrets manager.
 | `DB_MIN_CONNS` | No | `5` | Minimum connections kept in the pool; must be at least 0 and no greater than `DB_MAX_CONNS`. |
 | `DB_CONN_TIMEOUT` | No | `5s` | Go duration for connection setup, e.g. `5s` or `1m`; must be greater than 0. |
 
-Safe local `.env.example` (placeholders only):
+Local setup example with placeholder values:
 
-```dotenv
-# Copy to .env for local development and load it with direnv or "source .env".
-APP_ENV=development
-LOG_LEVEL=info
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=mybank_app
-DB_PASSWORD=replace-with-a-local-dev-password
-DB_NAME=mybank
-DB_SSLMODE=disable
-DB_MAX_CONNS=10
-DB_MIN_CONNS=2
-DB_CONN_TIMEOUT=5s
+```bash
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_USER=mybank_app
+export DB_PASSWORD='local-dev-only'
+export DB_NAME=mybank
+export DB_SSLMODE=disable
+export DB_MAX_CONNS=10
+export DB_MIN_CONNS=2
+export DB_CONN_TIMEOUT=5s
+
+go test ./internal/config/...
 ```
 
-**Never commit real credentials.** Keep `.env` out of Git, use distinct credentials per environment, and inject production secrets from a secrets manager. The values above are local placeholders, not working credentials.
-
-`config.LoadConfig()` validates these values at startup and returns an error naming the offending variable; it never includes the password in an error message or log. It returns `cfg.LogLevel`, which the application passes into the logger. This layer only produces a `Config` value — it does not open a database connection. That arrives with the persistence work in MB-005.
-
-Structured logging is provided by `internal/logger`. Initialise it once at startup with `logger.New(logger.Options{Level: cfg.LogLevel, Out: os.Stdout})`; the logger package does not import the config package. Attach a request ID with standard slog fields: `log.With(slog.String("request_id", id))`. The JSON handler redacts known secret-bearing keys (including `password`, `db_password`, `database_url`, `access_token`, `refresh_token`, `client_secret`, `authorization`, `dsn` and `connection_string`) by name, including inside nested groups, and `config.Config` implements `slog.LogValuer` so its password is never serialized. Redaction is key-based: it does **not** detect secrets logged under arbitrary unrecognised field names, so callers must never log raw credentials directly.
+`config.LoadConfig()` validates these values at startup and returns an error naming the offending variable; it never includes the password in an error message or log. This layer only produces a `Config` value — it does not open a database connection. That arrives with the persistence work in MB-005.
 
 ---
 

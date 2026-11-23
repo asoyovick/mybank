@@ -1,8 +1,6 @@
-# Save as: .github/workflows/ci.yml
-#
-# MyBank CI pipeline (issue MB-005)
+# MyBank CI pipeline
 # Runs on every pull request and on pushes to main:
-#   1. Branch-name check (issue-based workflow convention)
+#   1. Branch-name check (issue-based workflow convention, PRs only)
 #   2. Build
 #   3. Static analysis: go vet, staticcheck, gosec, govulncheck
 #   4. Tests with the race detector against a real PostgreSQL service
@@ -37,6 +35,7 @@ jobs:
   branch-name:
     name: Branch name
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
       - name: Check branch follows issue convention
@@ -57,34 +56,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Verify dependencies are tidy
-        run: |
-          go mod tidy
-          git diff --exit-code go.mod go.sum
-
-      - name: Download modules
-        run: go mod download
-
-      - name: Build all packages
-        run: go build ./...
-
-      - name: Build CLI binary
-        run: go build -o /tmp/mybank ./cmd/...
-
-  # ---------------------------------------------------------------------------
-  # Static analysis and security scanning.
-  # ---------------------------------------------------------------------------
-  lint:
-    name: Lint and security scan
-    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -101,6 +73,49 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+
+      - name: Verify dependencies are tidy
+        run: |
+          go mod tidy
+          if ! git diff --exit-code -- go.mod; then
+            echo "::error::go.mod is not tidy. Run 'go mod tidy' and commit the result."
+            exit 1
+          fi
+          if [ -f go.sum ] && ! git diff --exit-code -- go.sum; then
+            echo "::error::go.sum is not tidy. Run 'go mod tidy' and commit the result."
+            exit 1
+          fi
+          if [ -n "$(git ls-files --others --exclude-standard -- go.mod go.sum)" ]; then
+            echo "::error::go mod tidy produced untracked module files:"
+            git ls-files --others --exclude-standard -- go.mod go.sum
+            exit 1
+          fi
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Build all packages
+        run: go build ./...
+
+      - name: Build CLI binary
+        run: go build -o /tmp/mybank ./cmd/...
+
+  # ---------------------------------------------------------------------------
+  # Static analysis and security scanning.
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint and security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Use a current stable toolchain so analysis tools install reliably.
+          # Code is still vetted against the module's declared Go version.
+          go-version: 'stable'
+          cache: true
 
       - name: go vet
         run: go vet ./...
@@ -126,6 +141,7 @@ jobs:
   test:
     name: Test (race detector, PostgreSQL)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -163,6 +179,7 @@ jobs:
         run: go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ./...
 
       - name: Enforce coverage threshold
+        if: ${{ !cancelled() }}
         run: |
           total="$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')"
           echo "Total coverage: ${total}% (minimum ${COVERAGE_MIN}%)"
@@ -170,11 +187,12 @@ jobs:
             || { echo "::error::Coverage ${total}% is below ${COVERAGE_MIN}%"; exit 1; }
 
       - name: Upload coverage report
-        if: always()
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: coverage
           path: coverage.out
+          if-no-files-found: warn
           retention-days: 14
 
   # ---------------------------------------------------------------------------
@@ -184,7 +202,8 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    if: always()
+    timeout-minutes: 5
+    if: ${{ always() }}
     needs: [branch-name, build, lint, test]
     steps:
       - name: Verify all jobs passed

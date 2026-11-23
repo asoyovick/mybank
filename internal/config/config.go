@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -10,8 +9,6 @@ import (
 )
 
 const (
-	DefaultAppEnv        = "development"
-	DefaultLogLevel      = "INFO"
 	DefaultDBPort        = 5432
 	DefaultDBSSLMode     = "require"
 	DefaultDBMaxConns    = 25
@@ -20,8 +17,6 @@ const (
 )
 
 const (
-	envAppEnv        = "APP_ENV"
-	envLogLevel      = "LOG_LEVEL"
 	envDBHost        = "DB_HOST"
 	envDBPort        = "DB_PORT"
 	envDBUser        = "DB_USER"
@@ -34,8 +29,6 @@ const (
 )
 
 type Config struct {
-	AppEnv        string
-	LogLevel      string
 	DBHost        string
 	DBPort        int
 	DBUser        string
@@ -49,32 +42,14 @@ type Config struct {
 
 func (c Config) String() string {
 	return fmt.Sprintf(
-		"Config{AppEnv:%q LogLevel:%q DBHost:%q DBPort:%d DBUser:%q DBName:%q DBSSLMode:%q DBMaxConns:%d DBMinConns:%d DBConnTimeout:%s DBPassword:[REDACTED]}",
-		c.AppEnv, c.LogLevel, c.DBHost, c.DBPort, c.DBUser, c.DBName, c.DBSSLMode,
+		"Config{DBHost:%q DBPort:%d DBUser:%q DBName:%q DBSSLMode:%q DBMaxConns:%d DBMinConns:%d DBConnTimeout:%s DBPassword:[REDACTED]}",
+		c.DBHost, c.DBPort, c.DBUser, c.DBName, c.DBSSLMode,
 		c.DBMaxConns, c.DBMinConns, c.DBConnTimeout,
-	)
-}
-
-func (c Config) LogValue() slog.Value {
-	return slog.GroupValue(
-		slog.String("app_env", c.AppEnv),
-		slog.String("log_level", c.LogLevel),
-		slog.String("host", c.DBHost),
-		slog.Int("port", c.DBPort),
-		slog.String("user", c.DBUser),
-		slog.String("database", c.DBName),
-		slog.String("sslmode", c.DBSSLMode),
-		slog.Int("max_conns", c.DBMaxConns),
-		slog.Int("min_conns", c.DBMinConns),
-		slog.Duration("conn_timeout", c.DBConnTimeout),
-		slog.String("password", "[REDACTED]"),
 	)
 }
 
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
-		AppEnv:        DefaultAppEnv,
-		LogLevel:      DefaultLogLevel,
 		DBHost:        strings.TrimSpace(os.Getenv(envDBHost)),
 		DBPort:        DefaultDBPort,
 		DBUser:        strings.TrimSpace(os.Getenv(envDBUser)),
@@ -96,16 +71,6 @@ func LoadConfig() (*Config, error) {
 }
 
 func loadOptional(cfg *Config) error {
-	if raw, ok := lookup(envAppEnv); ok {
-		cfg.AppEnv = strings.ToLower(raw)
-	}
-	if raw, ok := lookup(envLogLevel); ok {
-		level := strings.ToUpper(raw)
-		if level == "WARNING" {
-			level = "WARN"
-		}
-		cfg.LogLevel = level
-	}
 	if err := parseInt(envDBPort, &cfg.DBPort); err != nil {
 		return err
 	}
@@ -160,18 +125,6 @@ func parseDuration(name string, target *time.Duration) error {
 }
 
 func validate(cfg *Config) error {
-	switch cfg.AppEnv {
-	case "development", "staging", "production":
-	default:
-		return fmt.Errorf("config: %s must be one of development, staging, production, got %q", envAppEnv, cfg.AppEnv)
-	}
-
-	switch cfg.LogLevel {
-	case "DEBUG", "INFO", "WARN", "ERROR":
-	default:
-		return fmt.Errorf("config: %s must be one of DEBUG, INFO, WARN, ERROR, got %q", envLogLevel, cfg.LogLevel)
-	}
-
 	for _, field := range []struct{ name, value string }{
 		{envDBHost, cfg.DBHost},
 		{envDBUser, cfg.DBUser},

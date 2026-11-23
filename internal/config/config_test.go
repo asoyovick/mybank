@@ -1,9 +1,6 @@
 package config
 
 import (
-	"bytes"
-	"encoding/json"
-	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +11,6 @@ const testPassword = "not-a-real-password-9f3a"
 func clearDBEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
-		envAppEnv, envLogLevel,
 		envDBHost, envDBPort, envDBUser, envDBPassword, envDBName,
 		envDBSSLMode, envDBMaxConns, envDBMinConns, envDBConnTimeout,
 	} {
@@ -35,13 +31,6 @@ func assertNoSecret(t *testing.T, err error) {
 	if err != nil && strings.Contains(err.Error(), testPassword) {
 		t.Fatalf("error leaked the database password: %v", err)
 	}
-}
-
-func applicationField(cfg *Config, env string) string {
-	if env == envAppEnv {
-		return cfg.AppEnv
-	}
-	return cfg.LogLevel
 }
 
 func TestLoadConfigMissingRequiredVariables(t *testing.T) {
@@ -68,8 +57,6 @@ func TestLoadConfigMissingRequiredVariables(t *testing.T) {
 
 func TestLoadConfigValidConfiguration(t *testing.T) {
 	clearDBEnv(t)
-	t.Setenv(envAppEnv, "Production")
-	t.Setenv(envLogLevel, "debug")
 	t.Setenv(envDBHost, "db.internal.example")
 	t.Setenv(envDBPort, "6543")
 	t.Setenv(envDBUser, "mybank_app")
@@ -86,8 +73,6 @@ func TestLoadConfigValidConfiguration(t *testing.T) {
 	}
 
 	want := Config{
-		AppEnv:        "production",
-		LogLevel:      "DEBUG",
 		DBHost:        "db.internal.example",
 		DBPort:        6543,
 		DBUser:        "mybank_app",
@@ -111,12 +96,6 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected defaults to load, got: %v", err)
 	}
-	if cfg.AppEnv != DefaultAppEnv {
-		t.Errorf("AppEnv: got %q, want %q", cfg.AppEnv, DefaultAppEnv)
-	}
-	if cfg.LogLevel != DefaultLogLevel {
-		t.Errorf("LogLevel: got %q, want %q", cfg.LogLevel, DefaultLogLevel)
-	}
 	if cfg.DBPort != DefaultDBPort {
 		t.Errorf("DBPort: got %d, want %d", cfg.DBPort, DefaultDBPort)
 	}
@@ -131,99 +110,6 @@ func TestLoadConfigDefaults(t *testing.T) {
 	}
 	if cfg.DBConnTimeout != DefaultDBConnTimeout {
 		t.Errorf("DBConnTimeout: got %s, want %s", cfg.DBConnTimeout, DefaultDBConnTimeout)
-	}
-}
-
-func TestLoadConfigApplicationDefaults(t *testing.T) {
-	cases := []struct {
-		name  string
-		env   string
-		field func(*Config) string
-		want  string
-	}{
-		{name: "APP_ENV", env: envAppEnv, field: func(c *Config) string { return c.AppEnv }, want: DefaultAppEnv},
-		{name: "LOG_LEVEL", env: envLogLevel, field: func(c *Config) string { return c.LogLevel }, want: DefaultLogLevel},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			clearDBEnv(t)
-			setRequiredEnv(t)
-
-			cfg, err := LoadConfig()
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got := tc.field(cfg); got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestLoadConfigApplicationValidValues(t *testing.T) {
-	cases := []struct {
-		name  string
-		env   string
-		value string
-		want  string
-	}{
-		{name: "development", env: envAppEnv, value: "development", want: "development"},
-		{name: "uppercase staging", env: envAppEnv, value: "STAGING", want: "staging"},
-		{name: "mixed case production", env: envAppEnv, value: "Production", want: "production"},
-		{name: "debug", env: envLogLevel, value: "debug", want: "DEBUG"},
-		{name: "info", env: envLogLevel, value: "Info", want: "INFO"},
-		{name: "warning alias", env: envLogLevel, value: "warning", want: "WARN"},
-		{name: "error", env: envLogLevel, value: "ERROR", want: "ERROR"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			clearDBEnv(t)
-			setRequiredEnv(t)
-			t.Setenv(tc.env, tc.value)
-
-			cfg, err := LoadConfig()
-			if err != nil {
-				t.Fatalf("unexpected error for %s=%q: %v", tc.env, tc.value, err)
-			}
-			if got := applicationField(cfg, tc.env); got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestLoadConfigApplicationInvalidValues(t *testing.T) {
-	cases := []struct {
-		name  string
-		env   string
-		value string
-	}{
-		{name: "unknown environment", env: envAppEnv, value: "qa"},
-		{name: "unsupported environment", env: envAppEnv, value: "prod"},
-		{name: "unknown log level", env: envLogLevel, value: "TRACE"},
-		{name: "numeric log level", env: envLogLevel, value: "1"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			clearDBEnv(t)
-			setRequiredEnv(t)
-			t.Setenv(tc.env, tc.value)
-
-			cfg, err := LoadConfig()
-			assertNoSecret(t, err)
-			if err == nil {
-				t.Fatalf("expected an error for %s=%q", tc.env, tc.value)
-			}
-			if cfg != nil {
-				t.Fatalf("expected a nil config on error, got %v", cfg)
-			}
-			if !strings.Contains(err.Error(), tc.env) {
-				t.Fatalf("expected error to name %s, got: %v", tc.env, err)
-			}
-		})
 	}
 }
 
@@ -327,41 +213,5 @@ func TestConfigStringRedactsPassword(t *testing.T) {
 	}
 	if strings.Contains(cfg.String(), testPassword) {
 		t.Fatalf("String() leaked the database password: %s", cfg)
-	}
-}
-
-func TestConfigLogValueRedactsPassword(t *testing.T) {
-	clearDBEnv(t)
-	setRequiredEnv(t)
-
-	cfg, err := LoadConfig()
-	if err != nil {
-		t.Fatalf("expected config to load, got: %v", err)
-	}
-
-	var buf bytes.Buffer
-	log := slog.New(slog.NewJSONHandler(&buf, nil))
-	log.Info("configuration", slog.Any("config", cfg))
-
-	if strings.Contains(buf.String(), testPassword) {
-		t.Fatalf("slog JSON output leaked the password: %s", buf.String())
-	}
-
-	var record map[string]any
-	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &record); err != nil {
-		t.Fatalf("invalid JSON log output: %v", err)
-	}
-	fields, ok := record["config"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected a structured config group, got: %v", record["config"])
-	}
-	if fields["password"] != "[REDACTED]" {
-		t.Fatalf("expected redacted password, got %v", fields["password"])
-	}
-	if fields["app_env"] != DefaultAppEnv {
-		t.Errorf("app_env: got %v, want %q", fields["app_env"], DefaultAppEnv)
-	}
-	if fields["log_level"] != DefaultLogLevel {
-		t.Errorf("log_level: got %v, want %q", fields["log_level"], DefaultLogLevel)
 	}
 }
