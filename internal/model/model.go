@@ -4,6 +4,25 @@ import (
 	"time"
 )
 
+// Domain-Specific sentinel errors.
+// Defining errors here lets the service and HTTP layers to react to specific failures.
+var (
+	ErrAccountNotFound = errors.New("account not found")
+	ErrInsufficientFunds = errors.New("insufficient funds")
+	ErrAccountIsDormant = errors.New("account is dormant")
+	ErrInvadlidAmount = errors.New("ammount cannot be less than one")
+	ErrCurrencyMismatch = errors.New("currency mismatch between accounts")
+
+)
+type AccountType string
+// Custom string types provide compile-time type safety.
+// you cannot accidentally pass a currency into a function expecting AccountStatus.
+const (
+	AccountTypeAssets   AccountType = "ASSETS"
+	AccountTypeLiabilty AccountType = "LIABILITY"
+	AccountTypeRevenue  AccountType = "REVENUE"
+)
+
 type AccountStatus string
 
 const (
@@ -19,6 +38,13 @@ const (
 	CurrencyTypeUSD CurrencyType = "USD"
 )
 
+type EntryType string
+
+const (
+	Deposit  EntryType = "CREDIT"
+	Withdraw EntryType = "DEBIT"
+)
+
 // starting with the models.
 // This is where we declare the structs that hold the user data.
 // user details for creating new account.
@@ -27,7 +53,7 @@ type AccountHolder struct {
 	Idno     string
 	Age      string
 	Gender   string
-	krapin   string
+	KRAPin   string
 	Email    string
 }
 
@@ -39,23 +65,33 @@ type Account struct {
 	AccountNumber string
 	Currency      CurrencyType
 	Status        AccountStatus
-	//History  []Transactions
+	Type 		AccountType
+	History  []Transactions
 }
 
 // User transaction details.
+}
+}
+
 type Transctions struct {
 	ID        int
+	AccountID int
 	Amount    float64
-	Type      string
+	entrytype EntryType
 	Timestamp time.Time
 	Details   string
 }
 
 // Create New account for the user.
 // This function updates the account struct.
-func NewAccount(id int, holder AccountHolder) *Account {
+func NewAccount(id int, holder AccountHolder, accNum string, accType AccountType, currency CurrencyType) *Account {
 	return &Account{
 		ID:     id,
 		Holder: holder,
+		Type:	accType,
+		Balance:	0.0,
+		Currency:	currency,
+		Status:		AccountStatusActive,
+		History:	make([]Transaction, 0),
 	}
 }
