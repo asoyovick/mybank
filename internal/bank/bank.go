@@ -1,6 +1,5 @@
 package bank
 
-//handle the bank engine.
 import (
 	"fmt"
 	"mybank/internal/model"
@@ -8,13 +7,13 @@ import (
 	"time"
 )
 
-// create bank register for managing all accounts.
+// Bank manages all customer accounts in memory.
 type Bank struct {
 	accounts map[int]*model.Account
 	nextID   int
 }
 
-// Initialize and return an empty new bank instance.
+// NewBank initializes and returns an empty new bank instance.
 func NewBank() *Bank {
 	return &Bank{
 		accounts: make(map[int]*model.Account),
@@ -50,9 +49,15 @@ func ValidateAge(dob string) error {
 	return nil
 }
 
-// Initiates New account with profile details, and asigns a unique ID.
-func (b *Bank) CreateAccount(fullname, idno, dob string) (int, error) {
+// CreateAccount initiates a new account with profile details and assigns a unique ID.
+func (b *Bank) CreateAccount(fullname, idno, dob string, accType model.AccountType, currency model.CurrencyType) (int, error) {
+	fullname = strings.TrimSpace(fullname)
+	idno = strings.TrimSpace(idno)
 	dob = strings.TrimSpace(dob)
+
+	if fullname == "" || idno == "" {
+		return 0, fmt.Errorf("full name and ID number are required")
+	}
 
 	if err := ValidateAge(dob); err != nil {
 		return 0, err
@@ -67,6 +72,8 @@ func (b *Bank) CreateAccount(fullname, idno, dob string) (int, error) {
 	id := b.nextID
 	b.nextID++
 
-	b.accounts[id] = model.NewAccount(id, holder)
+	accNum := fmt.Sprintf("ACC%06d", id)
+
+	b.accounts[id] = model.NewAccount(id, holder, accNum, accType, currency)
 	return id, nil
 }
