@@ -1,6 +1,7 @@
 package bank
 
 import (
+	"mybank/internal/model"
 	"testing"
 	"time"
 )
@@ -8,7 +9,7 @@ import (
 func TestCreateAccountRejectsInvalidDOB(t *testing.T) {
 	b := NewBank()
 
-	_, err := b.CreateAccount("Alex Doe", "123", "not-a-date")
+	_, err := b.CreateAccount("Alex Doe", "123", "not-a-date", model.AccountTypeAssets, model.CurrencyTypeKSH)
 	if err == nil {
 		t.Fatal("expected an error for an invalid DOB")
 	}
@@ -21,7 +22,7 @@ func TestCreateAccountRejectsFutureDOB(t *testing.T) {
 	b := NewBank()
 	futureDOB := time.Now().AddDate(0, 0, 2).Format("2006-01-02")
 
-	_, err := b.CreateAccount("Alex Doe", "123", futureDOB)
+	_, err := b.CreateAccount("Alex Doe", "123", futureDOB, model.AccountTypeAssets, model.CurrencyTypeKSH)
 	if err == nil {
 		t.Fatal("expected an error for a future DOB")
 	}
@@ -34,7 +35,7 @@ func TestCreateAccountRejectsUnderageCustomer(t *testing.T) {
 	b := NewBank()
 	underageDOB := time.Now().AddDate(-17, 0, 0).Format("2006-01-02")
 
-	_, err := b.CreateAccount("Alex Doe", "123", underageDOB)
+	_, err := b.CreateAccount("Alex Doe", "123", underageDOB, model.AccountTypeAssets, model.CurrencyTypeKSH)
 	if err == nil {
 		t.Fatal("expected an error for a customer under 18")
 	}
@@ -47,7 +48,7 @@ func TestCreateAccountAcceptsAdultCustomer(t *testing.T) {
 	b := NewBank()
 	adultDOB := time.Now().AddDate(-20, 0, 0).Format("2006-01-02")
 
-	id, err := b.CreateAccount("Alex Doe", "123", adultDOB)
+	id, err := b.CreateAccount("Alex Doe", "123", adultDOB, model.AccountTypeAssets, model.CurrencyTypeKSH)
 	if err != nil {
 		t.Fatalf("expected account creation to succeed, got error: %v", err)
 	}
@@ -92,7 +93,7 @@ func TestCreateAccount_ValidCustomer(t *testing.T) {
 
 	validDOB := time.Now().AddDate(-25, 0, 0).Format("2006-01-02")
 
-	id, err := b.CreateAccount("Jane Doe", "12345678", validDOB)
+	id, err := b.CreateAccount("Jane Doe", "12345678", validDOB, model.AccountTypeAssets, model.CurrencyTypeKSH)
 
 	if err != nil {
 		t.Fatalf("expected account creation to succeed, got error: %v", err)
