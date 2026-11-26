@@ -1,34 +1,36 @@
 package model
 
 import (
+	"errors"
 	"time"
 )
 
 // Domain-Specific sentinel errors.
-// Defining errors here lets the service and HTTP layers to react to specific failures.
+// Defining errors here lets the service and CLI layers react to specific failures.
 var (
-	ErrAccountNotFound = errors.New("account not found")
+	ErrAccountNotFound   = errors.New("account not found")
 	ErrInsufficientFunds = errors.New("insufficient funds")
-	ErrAccountIsDormant = errors.New("account is dormant")
-	ErrInvadlidAmount = errors.New("ammount cannot be less than one")
-	ErrCurrencyMismatch = errors.New("currency mismatch between accounts")
-
+	ErrAccountIsDormant  = errors.New("account is dormant")
+	ErrInvalidAmount     = errors.New("amount cannot be less than one")
+	ErrCurrencyMismatch  = errors.New("currency mismatch between accounts")
 )
+
 type AccountType string
+
 // Custom string types provide compile-time type safety.
 // you cannot accidentally pass a currency into a function expecting AccountStatus.
 const (
-	AccountTypeAssets   AccountType = "ASSETS"
-	AccountTypeLiabilty AccountType = "LIABILITY"
-	AccountTypeRevenue  AccountType = "REVENUE"
+	AccountTypeAssets    AccountType = "ASSETS"
+	AccountTypeLiability AccountType = "LIABILITY"
+	AccountTypeRevenue   AccountType = "REVENUE"
 )
 
 type AccountStatus string
 
 const (
-	AccountStatusActive AccountStatus = "ACTIVE"
-	AccountStatusFrozen AccountStatus = "FOZEN"
-	AccountStatusDomant AccountStatus = "DOMANT"
+	AccountStatusActive  AccountStatus = "ACTIVE"
+	AccountStatusFrozen  AccountStatus = "FROZEN"
+	AccountStatusDormant AccountStatus = "DORMANT"
 )
 
 type CurrencyType string
@@ -65,19 +67,15 @@ type Account struct {
 	AccountNumber string
 	Currency      CurrencyType
 	Status        AccountStatus
-	Type 		AccountType
-	History  []Transactions
+	Type          AccountType
+	History       []Transaction
 }
 
-// User transaction details.
-}
-}
-
-type Transctions struct {
+type Transaction struct {
 	ID        int
 	AccountID int
 	Amount    float64
-	entrytype EntryType
+	EntryType EntryType
 	Timestamp time.Time
 	Details   string
 }
@@ -86,12 +84,13 @@ type Transctions struct {
 // This function updates the account struct.
 func NewAccount(id int, holder AccountHolder, accNum string, accType AccountType, currency CurrencyType) *Account {
 	return &Account{
-		ID:     id,
-		Holder: holder,
-		Type:	accType,
-		Balance:	0.0,
-		Currency:	currency,
-		Status:		AccountStatusActive,
-		History:	make([]Transaction, 0),
+		ID:            id,
+		Holder:        holder,
+		AccountNumber: accNum,
+		Type:          accType,
+		Balance:       0.0,
+		Currency:      currency,
+		Status:        AccountStatusActive,
+		History:       make([]Transaction, 0),
 	}
 }
